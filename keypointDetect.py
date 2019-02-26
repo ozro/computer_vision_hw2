@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 from scipy import ndimage
-from skimage.feature import peak_local_max
+import matplotlib.pyplot as plt
 
 def createGaussianPyramid(im, sigma0=1, 
         k=np.sqrt(2), levels=[-1,0,1,2,3,4]):
@@ -24,20 +24,29 @@ def displayPyramid(im_pyramid):
     cv2.waitKey(0) # press any key to exit
     cv2.destroyAllWindows()
 
-def displayKeypoints(locs, im_pyr):
-    im_pyr = np.split(im_pyr, im_pyr.shape[2], axis=2)
-    im = im_pyr[0]
-    locs = np.split(locs, locs.shape[1], axis=1)
+def displayKeypoints(locs, im_pyr, levels=[-1, 0, 1, 2, 3, 4]):
+    im = im_pyr[:,:,0]
     im = np.repeat(im.reshape((im.shape[0], im.shape[1], 1)), 3, axis=2)
-    for l in range(len(locs)):
-        loc = locs[l]
-        row = loc[0]
-        col = loc[1]
-        cv2.circle(im, (col-1, row-1), 1, (0,1,0), thickness=1, lineType=8)
-    im = cv2.normalize(im, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
-    cv2.imshow('Pyramid of image', im)
-    cv2.waitKey(0) # press any key to exit
-    cv2.destroyAllWindows()
+    fig = plt.figure()
+    plt.imshow(im)
+    plt.plot(locs[:,0], locs[:,1], 'g.')
+    plt.draw()
+    plt.waitforbuttonpress(0)
+    plt.close(fig)
+
+    for i in range(im_pyr.shape[2]):
+        im = im_pyr[:,:,i]
+        im = np.repeat(im.reshape((im.shape[0], im.shape[1], 1)), 3, axis=2)
+        fig = plt.figure()
+        plt.imshow(im)
+        for j in range(locs.shape[0]):
+            if(locs[j, 2] == levels[i]):
+                plt.plot(locs[j,0], locs[j,1], 'g.')
+        plt.draw()
+        plt.waitforbuttonpress(0)
+        plt.close(fig)
+
+
 
 def createDoGPyramid(gaussian_pyramid, levels=[-1,0,1,2,3,4]):
     '''
@@ -81,13 +90,13 @@ def computePrincipalCurvature(DoG_pyramid):
     # Compute principal curvature here
     DoG_pyramid = np.split(DoG_pyramid, DoG_pyramid.shape[2], axis=2)
     for DoG in DoG_pyramid:
-        Dxx = cv2.Sobel(DoG,-1, 2, 0)
-        Dyy = cv2.Sobel(DoG,-1, 0, 2)
-        Dxy = cv2.Sobel(DoG,-1, 1, 1)
+        Dxx = cv2.Sobel(DoG,-1, 2, 0, ksize=5)
+        Dyy = cv2.Sobel(DoG,-1, 0, 2, ksize=5)
+        Dxy = cv2.Sobel(DoG,-1, 1, 1, ksize=5)
         Tr = Dxx + Dyy 
-        Det = cv2.multiply(Dxx,Dyy) - cv2.multiply(Dxy,Dxy)
+        Det = np.multiply(Dxx,Dyy) - np.multiply(Dxy,Dxy)
         Det[Det==0] = 10000
-        R = cv2.divide(cv2.multiply(Tr, Tr), Det)
+        R = np.divide(np.multiply(Tr, Tr), Det)
         principal_curvature.append(R)
     principal_curvature = np.stack(principal_curvature, axis=-1)
     return principal_curvature
@@ -115,23 +124,21 @@ def getLocalExtrema(DoG_pyramid, DoG_levels, principal_curvature,
     ##############
     #  TO DO ...
     # Compute locsDoG here
-    for i in range(1, DoG_pyramid.shape[2]-1):
-        DoG = DoG_pyramid[:,:,i].reshape(DoG_pyramid.shape[0:2])
-        curvature = principal_curvature[:,:,i].reshape(principal_curvature.shape[0:2])
-        (coords, Dmax, Dmin) = get_level_extremas(DoG, curvature, th_contrast, th_r) 
+    for i in range(DoG_pyramid.shape[2]):
+        DoG = DoG_pyramid[:,:,i]
+        curvature = principal_curvature[:,:,i]
+        (coords, Dmax) = get_level_extremas(DoG, curvature, th_contrast, th_r) 
 
-        valid = []
-        for j in [i-1, i+1]:
-            other = DoG_pyramid[:,:,j].reshape(DoG_pyramid.shape[0:2])
-            for (row, col) in coords:
-                if (row >= 1) and (row < im.shape[0]) and (col > 1) and (col < im.shape[1]):
-                    (pmax, pmin) = extract_patch_extrema(other, row, col)
-                    if (Dmax[row, col] and DoG[row,col] > pmax) or (Dmin[row, col] and DoG[row, col] < pmin):
-                        if((row, col, DoG_levels[i]) in valid):
-                            locsDoG.append((row, col, DoG_levels[i]))
-                        else:
-                            valid.append((row, col, DoG_levels[i]))
-    locsDoG = np.stack(locsDoG, axis=1)
+        for (row, col) in coords:
+            neighbors = []
+            for j in [i-1, i+1]:
+                if(0 <= j and j < DoG_pyramid.shape[2]):
+                    neighbors.append(DoG_pyramid[row, col, j])
+            if is_patch_extrema(neighbors, DoG, row, col, Dmax):
+                loc = (col-1, row-1, DoG_levels[i])
+                locsDoG.append(loc)
+
+    locsDoG = np.stack(locsDoG, axis=0)
     return locsDoG
 
 def get_level_extremas(DoG, curvature, th_c, th_r):
@@ -139,21 +146,22 @@ def get_level_extremas(DoG, curvature, th_c, th_r):
     DoG_min = ndimage.minimum_filter(DoG, size=3, mode='constant')
 
     extrema_mask = (DoG_max == DoG) | (DoG_min == DoG) 
-    extrema_mask = extrema_mask & ((DoG > th_c) | (DoG < -th_c))
-    # extrema_mask = peak_local_max(DoG, min_distance=1, indices=False)
-    # extrema_mask = extrema_mask & (DoG > th_c) 
-    mask_r = curvature > th_r
-    extrema_mask = extrema_mask & mask_r
-    coords = np.transpose(np.nonzero(extrema_mask))
+    extrema_mask = extrema_mask & ((DoG > th_c) | (DoG < -th_c)) & (curvature < (th_r+1)*(th_r+1)/(th_r))
 
-    return coords, DoG_max == DoG, DoG_min == DoG
+    coords = np.transpose(np.nonzero(extrema_mask))
+    return coords, DoG_max == DoG
     
     
-def extract_patch_extrema(im, row, col):
-    patch = im[row-1:row+1, col-1:col+1]
-    pmin = np.amin(patch)
-    pmax = np.amax(patch)
-    return (pmax, pmin)
+def is_patch_extrema(neighbors, im, row, col, Dmax):
+    this = im[row, col]
+    maximum = Dmax[row, col]
+    for neighbor in neighbors:
+        if(maximum and this < neighbor):
+            return False
+        elif (this > neighbor):
+            return False
+
+    return True
 
 def DoGdetector(im, sigma0=1, k=np.sqrt(2), levels=[-1,0,1,2,3,4], 
                 th_contrast=0.03, th_r=12):
@@ -195,7 +203,8 @@ if __name__ == '__main__':
     # test gaussian pyramid
     levels = [-1,0,1,2,3,4]
     im = cv2.imread('../data/model_chickenbroth.jpg')
-    #im = cv2.imread('../data/incline_L.png')
+    #im = cv2.imread('../data/chickenbroth_01.jpg')
+    # im = cv2.imread('../data/incline_L.png')
     #im = cv2.imread('../data/pf_floor.jpg')
 
     # im_pyr = createGaussianPyramid(im)
@@ -211,7 +220,11 @@ if __name__ == '__main__':
     # th_r = 12
     #locsDoG = getLocalExtrema(DoG_pyr, DoG_levels, pc_curvature, th_contrast, th_r)
     # test DoG detector
-    locsDoG, gaussian_pyramid = DoGdetector(im)
+    #locsDoG, gaussian_pyramid = DoGdetector(im)
+    k = np.sqrt(2)
+    levels=[-1,0,1,2,3,4]
+    locsDoG, gaussian_pyramid = DoGdetector(im, k=k, levels=levels)
     displayKeypoints(locsDoG, gaussian_pyramid)
+
 
 
