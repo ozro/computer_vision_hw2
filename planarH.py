@@ -16,11 +16,11 @@ def computeH(p1, p2):
     assert(p1.shape[0]==2)
     #############################
     # TO DO ...
-    u = p1[0, :].T
-    v = p1[1, :].T
-    x = p2[0, :].T
-    y = p2[1, :].T
-    A = constructA(u,v,x,y)
+    x1 = p1[0, :].T
+    y1 = p1[1, :].T
+    x2 = p2[0, :].T
+    y2 = p2[1, :].T
+    A = constructA(x2,y2,x1,y1)
     h = getEigenvector(np.matmul(A.T,A))
     H2to1 = np.reshape(h, (3,3))
     return H2to1
@@ -92,15 +92,16 @@ def ransacH(matches, locs1, locs2, num_iter=5000, tol=2):
             print(score/matches.shape[0])
             print(SSD_sum/score)
             print(hlocs1[0:2, idx])
-            print(getTransform(hlocs1[:, idx], H2to1)[0:2,:])
+            print(getTransform(hlocs2[:, idx], H2to1)[0:2,:])
         
         i+=1
 
-    pt1 = hlocs1[0:2, bestInliers] 
-    pt2 = hlocs2[0:2, bestInliers]
-    print(pt1)
-    print(pt2)
-    bestH = computeH(pt1, pt2)
+    pt1 = hlocs1[:, bestInliers] 
+    pt2 = hlocs2[:, bestInliers]
+    bestH = computeH(pt1[0:2,:], pt2[0:2,:])
+    bestH2 = computeH(pt2[0:2,:], pt1[0:2,:])
+    print("\n Final SSD")
+    print(np.sum(getSSD(pt1, pt2, bestH, bestH2))/pt1.shape[1])
     return bestH
 
 def getSSD(hlocs1, hlocs2, H2to1, H1to2):
@@ -112,7 +113,7 @@ def getSSD(hlocs1, hlocs2, H2to1, H1to2):
 
 def getTransform(pts, H):
     transformed = np.matmul(H, pts)
-    scale = np.tile(transformed[3,:], (3,1))
+    scale = np.tile(transformed[2,:], (3,1))
     transformed = transformed/scale
     return transformed
 
@@ -129,19 +130,25 @@ def displaySide(im1, im2):
 if __name__ == '__main__':
     # np.set_printoptions(precision=3)
     # p1 = np.array([[0, 1, 1, 0], [0, 1, 0, 1], [1, 1, 1, 1]])
-    # p2 = p1.copy()
+    # p2 = np.array([[1, 1, 0, 0], [1, 0, 1, 0], [1, 1, 1, 1]])
     # H = computeH(p1[0:2, :], p2[0:2, :])
+    # print(p1)
+    # print(p2)
+    # print(H)
+    # print(getTransform(p2, H))
 
-    # # Test RANSAC H
+    # Test RANSAC H
     im1 = cv2.imread('../data/model_chickenbroth.jpg')
-    im2 = cv2.imread('../data/model_chickenbroth.jpg')
-    #im2 = cv2.imread('../data/chickenbroth_01.jpg')
+    # im2 = cv2.imread('../data/model_chickenbroth.jpg')
+    # rot = cv2.getRotationMatrix2D((im1.shape[1]/2, im1.shape[0]/2), 5, 1)
+    # im2 = cv2.warpAffine(im1, rot, (im1.shape[1], im1.shape[0]))
+    im2 = cv2.imread('../data/chickenbroth_01.jpg')
     locs1, desc1 = briefLite(im1)
     locs2, desc2 = briefLite(im2)
     matches = briefMatch(desc1, desc2)
-    bestH = ransacH(matches, locs1, locs2, num_iter=5000, tol=4)
+    bestH = ransacH(matches, locs1, locs2, num_iter=50000, tol=2)
     print(bestH)
 
-    # # Compare warped image with source
+    # # # Compare warped image with source
     im_warped = cv2.warpPerspective(im2, bestH, (im2.shape[1], im2.shape[0]))
     displaySide(im1, im_warped)
