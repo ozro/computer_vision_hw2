@@ -87,21 +87,21 @@ def ransacH(matches, locs1, locs2, num_iter=5000, tol=2):
             bestSSD = SSD_sum
             bestScore = score
             bestInliers = inliers
-            print("\nUpdated!")
-            print(score)
-            print(score/matches.shape[0])
-            print(SSD_sum/score)
-            print(hlocs1[0:2, idx])
-            print(getTransform(hlocs2[:, idx], H2to1)[0:2,:])
+            # print("\nUpdated!")
+            # print(score)
+            # print(score/matches.shape[0])
+            # print(SSD_sum/hlocs1.shape[1])
+            # print(hlocs1[0:2, idx])
+            # print(getTransform(hlocs2[:, idx], H2to1)[0:2,:])
         
         i+=1
 
     pt1 = hlocs1[:, bestInliers] 
     pt2 = hlocs2[:, bestInliers]
     bestH = computeH(pt1[0:2,:], pt2[0:2,:])
-    bestH2 = computeH(pt2[0:2,:], pt1[0:2,:])
-    print("\n Final SSD")
-    print(np.sum(getSSD(pt1, pt2, bestH, bestH2))/pt1.shape[1])
+    # print("\n Final SSD")
+    # bestH2 = computeH(pt2[0:2,:], pt1[0:2,:])
+    # print(np.sum(getSSD(pt1, pt2, bestH, bestH2))/pt1.shape[1])
     return bestH
 
 def getSSD(hlocs1, hlocs2, H2to1, H1to2):
@@ -139,14 +139,30 @@ if __name__ == '__main__':
 
     # Test RANSAC H
     im1 = cv2.imread('../data/model_chickenbroth.jpg')
-    # im2 = cv2.imread('../data/model_chickenbroth.jpg')
+    # im1 = cv2.imread('../data/pf_scan_scaled.jpg')
+    # im1 = cv2.imread('../data/incline_L.png')
+
     # rot = cv2.getRotationMatrix2D((im1.shape[1]/2, im1.shape[0]/2), 5, 1)
     # im2 = cv2.warpAffine(im1, rot, (im1.shape[1], im1.shape[0]))
     im2 = cv2.imread('../data/chickenbroth_01.jpg')
+    # im2 = cv2.imread('../data/chickenbroth_02.jpg')
+    # im2 = cv2.imread('../data/chickenbroth_03.jpg')
+    # im2 = cv2.imread('../data/chickenbroth_04.jpg')
+    # im2 = cv2.imread('../data/chickenbroth_05.jpg')
+
+    # im2 = cv2.imread('../data/pf_floor.jpg')
+    # im2 = cv2.imread('../data/pf_floor_rot.jpg')
+    # im2 = cv2.imread('../data/pf_stand.jpg')
+    # im2 = cv2.imread('../data/pf_pile.jpg')
+    # im2 = cv2.imread('../data/pf_desk.jpg')
+
+    # im2 = cv2.imread('../data/incline_R.png')
+
     locs1, desc1 = briefLite(im1)
     locs2, desc2 = briefLite(im2)
     matches = briefMatch(desc1, desc2)
-    bestH = ransacH(matches, locs1, locs2, num_iter=50000, tol=2)
+
+    bestH = ransacH(matches, locs1, locs2, num_iter=5000, tol=2)
     print(bestH)
 
     # # # Compare warped image with source
